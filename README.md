@@ -24,14 +24,24 @@ highload-блоков и карту сайта. Подключается к лю
 
 1. Подключите пакет в `local/composer.json` проекта и выполните `composer install`.
 
-   Из GitHub:
+   Из GitHub (Packagist не нужен, достаточно репозитория):
+
+   ```bash
+   cd local
+   composer config repositories.custom-rest vcs https://github.com/razzhivine/custom-rest
+   composer require custom/rest:^1.0
+   ```
+
+   То же вручную в `local/composer.json`:
 
    ```json
    {
-       "repositories": [{"type": "vcs", "url": "https://github.com/<владелец>/<репозиторий>"}],
+       "repositories": [{"type": "vcs", "url": "https://github.com/razzhivine/custom-rest"}],
        "require": {"custom/rest": "^1.0"}
    }
    ```
+
+   Свежая разработка без релиза — `"custom/rest": "dev-main"`. Обновление: `composer update custom/rest`.
 
    Или из папки внутри проекта (разработка): `"repositories": [{"type": "path", "url": "packages/custom-rest",
    "options": {"symlink": true}}]`, `"require": {"custom/rest": "*@dev"}`.
@@ -52,7 +62,7 @@ highload-блоков и карту сайта. Подключается к лю
    Команда создаёт `local/php_interface/config/custom-rest.php` и `local/admin/custom_rest_hooks.php`, существующие файлы
    не трогает (`--force` перезаписывает).
 
-4. Откройте в `custom-rest.php` то, что нужно фронту: инфоблоки (по `API_CODE`), формы, highload-блоки, размеры картинок.
+4. Откройте в `custom-rest.php` то, что нужно фронту: инфоблоки (по `API_CODE`), формы, highload-блоки.
    У инфоблока заполните «Символьный код API» и шаблоны URL.
 
 5. Создайте вебхук (отдельный пользователь без прав администратора и только право пакета) и возьмите адрес:
