@@ -1,0 +1,28 @@
+<?php
+// Локальный стенд: тестовые данные из tests/fixtures/seed.php. Скопируйте в local/php_interface/config/custom-rest.local.php (он не в git).
+return [
+    'iblocks' => [
+        'testclubs' => [
+            'read_properties' => ['FORMAT', 'AREA', 'FEATURES', 'SCHEDULE', 'PHOTOS', 'TRAINERS', 'AMENITIES'],
+        ],
+        'testtrainers' => [
+            'read_properties' => ['SPECIALIZATION', 'EXPERIENCE', 'PHOTO', 'CERTIFICATES'],
+        ],
+    ],
+    'forms' => ['TEST_FEEDBACK', 'TEST_CALLBACK'],
+    'hlblocks' => [
+        'TestAmenities' => [
+            'fields' => [
+                'UF_NAME', 'UF_XML_ID', 'UF_SORT', 'UF_DESCRIPTION', 'UF_ICON',
+                'UF_TYPE', 'UF_PAID', 'UF_SINCE', 'UF_TAGS',
+            ],
+            'active_field' => 'UF_ACTIVE',
+        ],
+    ],
+    'sitemap' => [
+        'static' => ['/', ['url' => '/contacts/', 'lastmod' => '2026-01-15']],
+        'iblocks' => [
+            'testclubs' => ['exclude_property' => 'NO_INDEX', 'exclude_section_field' => 'UF_NO_INDEX'],
+        ],
+    ],
+];

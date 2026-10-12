@@ -1,0 +1,2806 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "REST API (custom/rest, префикс custom.rest)",
+    "version": "1.0.0",
+    "description": "API для фронтенда: контент инфоблоков, поиск, веб-формы, справочники highload-блоков и карта сайта. Работает через входящий вебхук Битрикса, у которого только право `custom.rest`; секрет вебхука в адресе, поэтому запросы нужно делать с сервера, а не из браузера. Контент только читается; единственная запись — отправка веб-формы.\n\nВсе методы доступны и как `GET` с параметрами в строке запроса (массивы — `select[]=a&select[]=b`, объекты — `filter[CODE]=x`), и как `POST` с JSON-телом. Символ `=` внутри ключа (`filter[>=…]`) кодируйте как `%3D`. Ответ успеха — `{\"result\": …, \"time\": …}`, ошибка — `{\"error\", \"error_description\"}` с HTTP-статусом."
+  },
+  "servers": [
+    {
+      "url": "https://{host}/rest/{userId}/{secret}",
+      "variables": {
+        "host": {
+          "default": "site.ru"
+        },
+        "userId": {
+          "default": "2"
+        },
+        "secret": {
+          "default": "SECRET"
+        }
+      }
+    }
+  ],
+  "tags": [
+    {
+      "name": "Инфоблоки"
+    },
+    {
+      "name": "Поиск"
+    },
+    {
+      "name": "Веб-формы"
+    },
+    {
+      "name": "Highload-блоки"
+    },
+    {
+      "name": "Карта сайта"
+    }
+  ],
+  "paths": {
+    "/custom.rest.breadcrumbs.get.json": {
+      "get": {
+        "operationId": "breadcrumbsGet",
+        "tags": [
+          "Инфоблоки"
+        ],
+        "summary": "Хлебные крошки",
+        "description": "Только цепочка до раздела или элемента, когда сами данные страницы не нужны.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/iblock_code"
+          },
+          {
+            "$ref": "#/components/parameters/section_id"
+          },
+          {
+            "$ref": "#/components/parameters/section_code_path"
+          },
+          {
+            "name": "element_id",
+            "in": "query",
+            "required": false,
+            "description": "ID элемента.",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "element_code",
+            "in": "query",
+            "required": false,
+            "description": "Код элемента (вместе с `section_code_path` для однозначности).",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "If-None-Match",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ETag из прошлого ответа. Если ответ не изменился — 304 без тела. Только для GET."
+          },
+          {
+            "name": "If-Modified-Since",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Last-Modified из прошлого ответа (проверяется, если нет If-None-Match). Только для GET."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Успех",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "result": {
+                      "$ref": "#/components/schemas/Breadcrumbs"
+                    },
+                    "time": {
+                      "$ref": "#/components/schemas/Time"
+                    }
+                  },
+                  "required": [
+                    "result"
+                  ],
+                  "additionalProperties": true
+                }
+              }
+            },
+            "headers": {
+              "ETag": {
+                "description": "Слабый ETag ответа (хеш `result`): тот же ответ даёт тот же ETag.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Last-Modified": {
+                "description": "Когда построен закешированный ответ; правка контента сбрасывает кеш и сдвигает время вперёд.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          },
+          "304": {
+            "description": "Не изменилось с прошлого запроса: тело пустое, берите ответ из своего кеша."
+          }
+        }
+      }
+    },
+    "/custom.rest.captcha.get.json": {
+      "get": {
+        "operationId": "captchaGet",
+        "tags": [
+          "Веб-формы"
+        ],
+        "summary": "Капча",
+        "description": "Код хранится в базе: покажите картинку `full_path`, а `sid` и введённый код передайте в form.add. Код одноразовый.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Успех",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "result": {
+                      "$ref": "#/components/schemas/Captcha"
+                    },
+                    "time": {
+                      "$ref": "#/components/schemas/Time"
+                    }
+                  },
+                  "required": [
+                    "result"
+                  ],
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/custom.rest.element.get.json": {
+      "get": {
+        "operationId": "elementGet",
+        "tags": [
+          "Инфоблоки"
+        ],
+        "summary": "Один элемент",
+        "description": "Элемент с SEO, картинками, `url`, хлебными крошками и свойствами из `properties[]`. Неактивный, вне дат и из скрытого раздела — 404.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/iblock_code"
+          },
+          {
+            "name": "id",
+            "in": "query",
+            "required": false,
+            "description": "ID элемента. Либо он, либо `code`.",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "code",
+            "in": "query",
+            "required": false,
+            "description": "Символьный код элемента. Либо он, либо `id`.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "section_code_path",
+            "in": "query",
+            "required": false,
+            "description": "Путь основного раздела из URL: код однозначен, неканонический путь даёт 404.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/select"
+          },
+          {
+            "$ref": "#/components/parameters/properties"
+          },
+          {
+            "name": "If-None-Match",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ETag из прошлого ответа. Если ответ не изменился — 304 без тела. Только для GET."
+          },
+          {
+            "name": "If-Modified-Since",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Last-Modified из прошлого ответа (проверяется, если нет If-None-Match). Только для GET."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Успех",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "result": {
+                      "$ref": "#/components/schemas/Element"
+                    },
+                    "time": {
+                      "$ref": "#/components/schemas/Time"
+                    }
+                  },
+                  "required": [
+                    "result"
+                  ],
+                  "additionalProperties": true
+                }
+              }
+            },
+            "headers": {
+              "ETag": {
+                "description": "Слабый ETag ответа (хеш `result`): тот же ответ даёт тот же ETag.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Last-Modified": {
+                "description": "Когда построен закешированный ответ; правка контента сбрасывает кеш и сдвигает время вперёд.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          },
+          "304": {
+            "description": "Не изменилось с прошлого запроса: тело пустое, берите ответ из своего кеша."
+          }
+        }
+      }
+    },
+    "/custom.rest.element.list.json": {
+      "get": {
+        "operationId": "elementList",
+        "tags": [
+          "Инфоблоки"
+        ],
+        "summary": "Список элементов",
+        "description": "Видимые элементы раздела или инфоблока: фильтр по полям и свойствам, сортировка, страницы. Крошки — в `meta.breadcrumbs`.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/iblock_code"
+          },
+          {
+            "$ref": "#/components/parameters/section_id"
+          },
+          {
+            "$ref": "#/components/parameters/section_code_path"
+          },
+          {
+            "$ref": "#/components/parameters/include_subsections"
+          },
+          {
+            "$ref": "#/components/parameters/select"
+          },
+          {
+            "$ref": "#/components/parameters/filter"
+          },
+          {
+            "$ref": "#/components/parameters/order"
+          },
+          {
+            "$ref": "#/components/parameters/properties"
+          },
+          {
+            "$ref": "#/components/parameters/page"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Записей на страницу.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50,
+              "default": 10
+            }
+          },
+          {
+            "name": "If-None-Match",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ETag из прошлого ответа. Если ответ не изменился — 304 без тела. Только для GET."
+          },
+          {
+            "name": "If-Modified-Since",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Last-Modified из прошлого ответа (проверяется, если нет If-None-Match). Только для GET."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Успех",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "result": {
+                      "$ref": "#/components/schemas/ElementList"
+                    },
+                    "time": {
+                      "$ref": "#/components/schemas/Time"
+                    }
+                  },
+                  "required": [
+                    "result"
+                  ],
+                  "additionalProperties": true
+                }
+              }
+            },
+            "headers": {
+              "ETag": {
+                "description": "Слабый ETag ответа (хеш `result`): тот же ответ даёт тот же ETag.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Last-Modified": {
+                "description": "Когда построен закешированный ответ; правка контента сбрасывает кеш и сдвигает время вперёд.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          },
+          "304": {
+            "description": "Не изменилось с прошлого запроса: тело пустое, берите ответ из своего кеша."
+          }
+        }
+      }
+    },
+    "/custom.rest.filter.get.json": {
+      "get": {
+        "operationId": "filterGet",
+        "tags": [
+          "Инфоблоки"
+        ],
+        "summary": "Форма фильтра",
+        "description": "Свойства умного фильтра раздела: значения со счётчиками при текущем выборе и диапазоны чисел. Выбор — как в `filter` у `element.list`.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/iblock_code"
+          },
+          {
+            "$ref": "#/components/parameters/section_id"
+          },
+          {
+            "$ref": "#/components/parameters/section_code_path"
+          },
+          {
+            "$ref": "#/components/parameters/include_subsections"
+          },
+          {
+            "name": "properties[]",
+            "in": "query",
+            "required": false,
+            "description": "Свойства формы в нужном порядке (из `read_properties` и умного фильтра). Без него — по флагу умного фильтра.",
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "$ref": "#/components/parameters/filter"
+          },
+          {
+            "name": "If-None-Match",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ETag из прошлого ответа. Если ответ не изменился — 304 без тела. Только для GET."
+          },
+          {
+            "name": "If-Modified-Since",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Last-Modified из прошлого ответа (проверяется, если нет If-None-Match). Только для GET."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Успех",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "result": {
+                      "$ref": "#/components/schemas/FilterForm"
+                    },
+                    "time": {
+                      "$ref": "#/components/schemas/Time"
+                    }
+                  },
+                  "required": [
+                    "result"
+                  ],
+                  "additionalProperties": true
+                }
+              }
+            },
+            "headers": {
+              "ETag": {
+                "description": "Слабый ETag ответа (хеш `result`): тот же ответ даёт тот же ETag.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Last-Modified": {
+                "description": "Когда построен закешированный ответ; правка контента сбрасывает кеш и сдвигает время вперёд.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          },
+          "304": {
+            "description": "Не изменилось с прошлого запроса: тело пустое, берите ответ из своего кеша."
+          }
+        }
+      }
+    },
+    "/custom.rest.form.add.json": {
+      "post": {
+        "operationId": "formAdd",
+        "tags": [
+          "Веб-формы"
+        ],
+        "summary": "Отправить форму",
+        "description": "Проверка (обязательные поля, e-mail, даты, файлы, валидаторы, капча), сохранение результата и письма. Ошибки заполнения — 200 и `success: false`. Файлы: только разрешённые расширения и до лимита; результатов формы — не больше лимита в минуту и час (429).",
+        "responses": {
+          "200": {
+            "description": "Успех",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "result": {
+                      "$ref": "#/components/schemas/FormAddResult"
+                    },
+                    "time": {
+                      "$ref": "#/components/schemas/Time"
+                    }
+                  },
+                  "required": [
+                    "result"
+                  ],
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FormAddRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/custom.rest.form.get.json": {
+      "get": {
+        "operationId": "formGet",
+        "tags": [
+          "Веб-формы"
+        ],
+        "summary": "Веб-форма",
+        "description": "Поля формы, варианты ответов, валидаторы и `name` для отправки; служебные поля и выключенные вопросы не отдаются.",
+        "parameters": [
+          {
+            "name": "sid",
+            "in": "query",
+            "required": true,
+            "description": "Символьный идентификатор (SID) формы из белого списка.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Успех",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "result": {
+                      "$ref": "#/components/schemas/Form"
+                    },
+                    "time": {
+                      "$ref": "#/components/schemas/Time"
+                    }
+                  },
+                  "required": [
+                    "result"
+                  ],
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/custom.rest.hl.get.json": {
+      "get": {
+        "operationId": "hlGet",
+        "tags": [
+          "Highload-блоки"
+        ],
+        "summary": "Одна запись highload-блока",
+        "description": "Запись по `id` или `xml_id`; выключенная — 404.",
+        "parameters": [
+          {
+            "name": "hl",
+            "in": "query",
+            "required": true,
+            "description": "Имя (NAME) highload-блока.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "query",
+            "required": false,
+            "description": "ID записи.",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "xml_id",
+            "in": "query",
+            "required": false,
+            "description": "UF_XML_ID записи.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/select"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Успех",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "result": {
+                      "$ref": "#/components/schemas/HlItem"
+                    },
+                    "time": {
+                      "$ref": "#/components/schemas/Time"
+                    }
+                  },
+                  "required": [
+                    "result"
+                  ],
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/custom.rest.hl.list.json": {
+      "get": {
+        "operationId": "hlList",
+        "tags": [
+          "Highload-блоки"
+        ],
+        "summary": "Записи highload-блока",
+        "description": "Записи справочника из белого списка: только открытые поля и активные записи. Список фильтруется по XML_ID значения, «да/нет» — `true`/`false`, даты — ISO.",
+        "parameters": [
+          {
+            "name": "hl",
+            "in": "query",
+            "required": true,
+            "description": "Имя (NAME) highload-блока.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/select"
+          },
+          {
+            "$ref": "#/components/parameters/filter"
+          },
+          {
+            "$ref": "#/components/parameters/order"
+          },
+          {
+            "$ref": "#/components/parameters/page"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Записей на страницу.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Успех",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "result": {
+                      "$ref": "#/components/schemas/HlList"
+                    },
+                    "time": {
+                      "$ref": "#/components/schemas/Time"
+                    }
+                  },
+                  "required": [
+                    "result"
+                  ],
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/custom.rest.iblock.get.json": {
+      "get": {
+        "operationId": "iblockGet",
+        "tags": [
+          "Инфоблоки"
+        ],
+        "summary": "Инфоблок как страница списка",
+        "description": "Название, описание, картинка, SEO по шаблонам «Для разделов» инфоблока, адрес списка и хлебные крошки: корень каталога.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/iblock_code"
+          },
+          {
+            "name": "If-None-Match",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ETag из прошлого ответа. Если ответ не изменился — 304 без тела. Только для GET."
+          },
+          {
+            "name": "If-Modified-Since",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Last-Modified из прошлого ответа (проверяется, если нет If-None-Match). Только для GET."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Успех",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "result": {
+                      "$ref": "#/components/schemas/Iblock"
+                    },
+                    "time": {
+                      "$ref": "#/components/schemas/Time"
+                    }
+                  },
+                  "required": [
+                    "result"
+                  ],
+                  "additionalProperties": true
+                }
+              }
+            },
+            "headers": {
+              "ETag": {
+                "description": "Слабый ETag ответа (хеш `result`): тот же ответ даёт тот же ETag.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Last-Modified": {
+                "description": "Когда построен закешированный ответ; правка контента сбрасывает кеш и сдвигает время вперёд.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          },
+          "304": {
+            "description": "Не изменилось с прошлого запроса: тело пустое, берите ответ из своего кеша."
+          }
+        }
+      }
+    },
+    "/custom.rest.search.json": {
+      "get": {
+        "operationId": "search",
+        "tags": [
+          "Поиск"
+        ],
+        "summary": "Поиск по сайту",
+        "description": "Результаты по индексу модуля поиска, только инфоблоки из белого списка; запрос без значимых слов даёт пустой результат с `meta.notice`.",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "description": "Запрос, до 200 символов.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "iblock_code[]",
+            "in": "query",
+            "required": false,
+            "description": "Ограничить инфоблоками из белого списка.",
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "$ref": "#/components/parameters/page"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Записей на страницу.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50,
+              "default": 10
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Успех",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "result": {
+                      "$ref": "#/components/schemas/SearchResult"
+                    },
+                    "time": {
+                      "$ref": "#/components/schemas/Time"
+                    }
+                  },
+                  "required": [
+                    "result"
+                  ],
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/custom.rest.search.suggest.json": {
+      "get": {
+        "operationId": "searchSuggest",
+        "tags": [
+          "Поиск"
+        ],
+        "summary": "Подсказки поиска",
+        "description": "Совпадения по началу слов в названиях, для строки поиска.",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "description": "Начало запроса.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "iblock_code[]",
+            "in": "query",
+            "required": false,
+            "description": "Ограничить инфоблоками.",
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Сколько подсказок.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 10,
+              "default": 5
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Успех",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "result": {
+                      "type": "object",
+                      "properties": {
+                        "items": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/SearchItem"
+                          }
+                        }
+                      },
+                      "required": [
+                        "items"
+                      ],
+                      "additionalProperties": true
+                    },
+                    "time": {
+                      "$ref": "#/components/schemas/Time"
+                    }
+                  },
+                  "required": [
+                    "result"
+                  ],
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/custom.rest.section.get.json": {
+      "get": {
+        "operationId": "sectionGet",
+        "tags": [
+          "Инфоблоки"
+        ],
+        "summary": "Один раздел",
+        "description": "Раздел по `id`, `code` или `code_path` с SEO, картинками, `url` и крошками.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/iblock_code"
+          },
+          {
+            "name": "id",
+            "in": "query",
+            "required": false,
+            "description": "ID раздела.",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "code",
+            "in": "query",
+            "required": false,
+            "description": "Код раздела (при повторах берётся первый по дереву).",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "code_path",
+            "in": "query",
+            "required": false,
+            "description": "Путь кодов от корня: `moscow/moscow-center`.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/select"
+          },
+          {
+            "$ref": "#/components/parameters/filter"
+          },
+          {
+            "name": "If-None-Match",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ETag из прошлого ответа. Если ответ не изменился — 304 без тела. Только для GET."
+          },
+          {
+            "name": "If-Modified-Since",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Last-Modified из прошлого ответа (проверяется, если нет If-None-Match). Только для GET."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Успех",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "result": {
+                      "$ref": "#/components/schemas/Section"
+                    },
+                    "time": {
+                      "$ref": "#/components/schemas/Time"
+                    }
+                  },
+                  "required": [
+                    "result"
+                  ],
+                  "additionalProperties": true
+                }
+              }
+            },
+            "headers": {
+              "ETag": {
+                "description": "Слабый ETag ответа (хеш `result`): тот же ответ даёт тот же ETag.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Last-Modified": {
+                "description": "Когда построен закешированный ответ; правка контента сбрасывает кеш и сдвигает время вперёд.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          },
+          "304": {
+            "description": "Не изменилось с прошлого запроса: тело пустое, берите ответ из своего кеша."
+          }
+        }
+      }
+    },
+    "/custom.rest.section.list.json": {
+      "get": {
+        "operationId": "sectionList",
+        "tags": [
+          "Инфоблоки"
+        ],
+        "summary": "Дочерние разделы",
+        "description": "Разделы первого уровня или потомки указанного, постранично. Скрытые не отдаются.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/iblock_code"
+          },
+          {
+            "$ref": "#/components/parameters/section_id"
+          },
+          {
+            "$ref": "#/components/parameters/section_code_path"
+          },
+          {
+            "$ref": "#/components/parameters/select"
+          },
+          {
+            "$ref": "#/components/parameters/filter"
+          },
+          {
+            "$ref": "#/components/parameters/order"
+          },
+          {
+            "$ref": "#/components/parameters/page"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Записей на страницу.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 50
+            }
+          },
+          {
+            "name": "If-None-Match",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ETag из прошлого ответа. Если ответ не изменился — 304 без тела. Только для GET."
+          },
+          {
+            "name": "If-Modified-Since",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Last-Modified из прошлого ответа (проверяется, если нет If-None-Match). Только для GET."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Успех",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "result": {
+                      "$ref": "#/components/schemas/SectionList"
+                    },
+                    "time": {
+                      "$ref": "#/components/schemas/Time"
+                    }
+                  },
+                  "required": [
+                    "result"
+                  ],
+                  "additionalProperties": true
+                }
+              }
+            },
+            "headers": {
+              "ETag": {
+                "description": "Слабый ETag ответа (хеш `result`): тот же ответ даёт тот же ETag.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Last-Modified": {
+                "description": "Когда построен закешированный ответ; правка контента сбрасывает кеш и сдвигает время вперёд.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          },
+          "304": {
+            "description": "Не изменилось с прошлого запроса: тело пустое, берите ответ из своего кеша."
+          }
+        }
+      }
+    },
+    "/custom.rest.section.tree.json": {
+      "get": {
+        "operationId": "sectionTree",
+        "tags": [
+          "Инфоблоки"
+        ],
+        "summary": "Дерево разделов",
+        "description": "Дерево видимых разделов одним запросом (до 1000 узлов); `children` у каждого узла.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/iblock_code"
+          },
+          {
+            "$ref": "#/components/parameters/section_id"
+          },
+          {
+            "$ref": "#/components/parameters/section_code_path"
+          },
+          {
+            "name": "depth",
+            "in": "query",
+            "required": false,
+            "description": "Сколько уровней вниз.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 10,
+              "default": 3
+            }
+          },
+          {
+            "$ref": "#/components/parameters/select"
+          },
+          {
+            "$ref": "#/components/parameters/filter"
+          },
+          {
+            "name": "If-None-Match",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ETag из прошлого ответа. Если ответ не изменился — 304 без тела. Только для GET."
+          },
+          {
+            "name": "If-Modified-Since",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Last-Modified из прошлого ответа (проверяется, если нет If-None-Match). Только для GET."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Успех",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "result": {
+                      "$ref": "#/components/schemas/SectionTree"
+                    },
+                    "time": {
+                      "$ref": "#/components/schemas/Time"
+                    }
+                  },
+                  "required": [
+                    "result"
+                  ],
+                  "additionalProperties": true
+                }
+              }
+            },
+            "headers": {
+              "ETag": {
+                "description": "Слабый ETag ответа (хеш `result`): тот же ответ даёт тот же ETag.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Last-Modified": {
+                "description": "Когда построен закешированный ответ; правка контента сбрасывает кеш и сдвигает время вперёд.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          },
+          "304": {
+            "description": "Не изменилось с прошлого запроса: тело пустое, берите ответ из своего кеша."
+          }
+        }
+      }
+    },
+    "/custom.rest.sitemap.get.json": {
+      "get": {
+        "operationId": "sitemapGet",
+        "tags": [
+          "Карта сайта"
+        ],
+        "summary": "Адреса карты сайта",
+        "description": "Страница списка инфоблока, разделы, элементы по порядку; исключённые флагами и настройками не отдаются. Адреса относительные.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "query",
+            "required": true,
+            "description": "Код инфоблока или `static` (`name` из sitemap.index).",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/page"
+          },
+          {
+            "name": "images",
+            "in": "query",
+            "required": false,
+            "description": "`Y` — добавить ссылки на картинки (`images`).",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "Y"
+              ]
+            }
+          },
+          {
+            "name": "If-None-Match",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ETag из прошлого ответа. Если ответ не изменился — 304 без тела. Только для GET."
+          },
+          {
+            "name": "If-Modified-Since",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Last-Modified из прошлого ответа (проверяется, если нет If-None-Match). Только для GET."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Успех",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "result": {
+                      "$ref": "#/components/schemas/SitemapPage"
+                    },
+                    "time": {
+                      "$ref": "#/components/schemas/Time"
+                    }
+                  },
+                  "required": [
+                    "result"
+                  ],
+                  "additionalProperties": true
+                }
+              }
+            },
+            "headers": {
+              "ETag": {
+                "description": "Слабый ETag ответа (хеш `result`): тот же ответ даёт тот же ETag.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Last-Modified": {
+                "description": "Когда построен закешированный ответ; правка контента сбрасывает кеш и сдвигает время вперёд.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          },
+          "304": {
+            "description": "Не изменилось с прошлого запроса: тело пустое, берите ответ из своего кеша."
+          }
+        }
+      }
+    },
+    "/custom.rest.sitemap.index.json": {
+      "get": {
+        "operationId": "sitemapIndex",
+        "tags": [
+          "Карта сайта"
+        ],
+        "summary": "Какие карты сайта есть",
+        "description": "Одна карта на инфоблок из белого списка и `static`; `pages` — страниц по `page_size` адресов.",
+        "parameters": [
+          {
+            "name": "If-None-Match",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ETag из прошлого ответа. Если ответ не изменился — 304 без тела. Только для GET."
+          },
+          {
+            "name": "If-Modified-Since",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Last-Modified из прошлого ответа (проверяется, если нет If-None-Match). Только для GET."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Успех",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "result": {
+                      "$ref": "#/components/schemas/SitemapIndex"
+                    },
+                    "time": {
+                      "$ref": "#/components/schemas/Time"
+                    }
+                  },
+                  "required": [
+                    "result"
+                  ],
+                  "additionalProperties": true
+                }
+              }
+            },
+            "headers": {
+              "ETag": {
+                "description": "Слабый ETag ответа (хеш `result`): тот же ответ даёт тот же ETag.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Last-Modified": {
+                "description": "Когда построен закешированный ответ; правка контента сбрасывает кеш и сдвигает время вперёд.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          },
+          "304": {
+            "description": "Не изменилось с прошлого запроса: тело пустое, берите ответ из своего кеша."
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "parameters": {
+      "iblock_code": {
+        "name": "iblock_code",
+        "in": "query",
+        "required": true,
+        "description": "Символьный код API инфоблока (API_CODE) из белого списка настроек API.",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "select": {
+        "name": "select[]",
+        "in": "query",
+        "required": false,
+        "description": "Какие поля вернуть: `select[]=NAME&select[]=CODE`. `ID` и `IBLOCK_ID` приходят всегда.",
+        "schema": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "style": "form",
+        "explode": true
+      },
+      "filter": {
+        "name": "filter",
+        "in": "query",
+        "required": false,
+        "description": "Условия D7: ключ — оператор и поле, значение — с чем сравнивать. Например `filter[>=PROPERTY.AREA]=1000`, `filter[@ID][]=1&filter[@ID][]=2`, `filter[0][LOGIC]=OR&filter[0][CODE]=a`. Операторы: `=` `!` `!=` `>` `>=` `<` `<=` `%` `!%` `@` `!@` `><` `!><`. Поля — из белого списка метода, свойства — `PROPERTY.<КОД>`.",
+        "schema": {
+          "type": "object",
+          "properties": {},
+          "additionalProperties": true
+        },
+        "style": "deepObject",
+        "explode": true
+      },
+      "order": {
+        "name": "order",
+        "in": "query",
+        "required": false,
+        "description": "Сортировка: поле → `ASC` или `DESC`, например `order[NAME]=asc` или `order[PROPERTY.AREA]=desc`.",
+        "schema": {
+          "type": "object",
+          "properties": {},
+          "additionalProperties": true
+        },
+        "style": "deepObject",
+        "explode": true
+      },
+      "properties": {
+        "name": "properties[]",
+        "in": "query",
+        "required": false,
+        "description": "Свойства элемента, которые вернуть (только из `read_properties` инфоблока): `properties[]=FORMAT&properties[]=AREA`.",
+        "schema": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "style": "form",
+        "explode": true
+      },
+      "page": {
+        "name": "page",
+        "in": "query",
+        "required": false,
+        "description": "Номер страницы.",
+        "schema": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 1
+        }
+      },
+      "limit": {
+        "name": "limit",
+        "in": "query",
+        "required": false,
+        "description": "Сколько записей на страницу (максимум зависит от метода).",
+        "schema": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "section_id": {
+        "name": "section_id",
+        "in": "query",
+        "required": false,
+        "description": "ID раздела. Либо он, либо `section_code_path`.",
+        "schema": {
+          "type": "integer"
+        }
+      },
+      "section_code_path": {
+        "name": "section_code_path",
+        "in": "query",
+        "required": false,
+        "description": "Путь кодов раздела от корня, как в URL: `moscow/moscow-center`.",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "include_subsections": {
+        "name": "include_subsections",
+        "in": "query",
+        "required": false,
+        "description": "`Y` — вместе с подразделами.",
+        "schema": {
+          "type": "string",
+          "enum": [
+            "Y"
+          ]
+        }
+      }
+    },
+    "schemas": {
+      "Time": {
+        "type": "object",
+        "properties": {
+          "start": {
+            "type": "number"
+          },
+          "finish": {
+            "type": "number"
+          },
+          "duration": {
+            "type": "number"
+          },
+          "processing": {
+            "type": "number"
+          },
+          "date_start": {
+            "type": "string"
+          },
+          "date_finish": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true,
+        "description": "Служебное время выполнения от Битрикса."
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "error_description": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "error",
+          "error_description"
+        ],
+        "additionalProperties": true
+      },
+      "File": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "src": {
+            "type": "string"
+          },
+          "full_path": {
+            "type": "string",
+            "description": "Абсолютная ссылка (по base_url или хосту сайта)."
+          },
+          "width": {
+            "type": "integer"
+          },
+          "height": {
+            "type": "integer"
+          },
+          "size": {
+            "type": "integer"
+          },
+          "alt": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true,
+        "description": "Файл или картинка."
+      },
+      "Seo": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "keywords": {
+            "type": "string"
+          },
+          "h1": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true,
+        "description": "Вычисленные SEO-значения (в списках — только h1)."
+      },
+      "Breadcrumb": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "home",
+              "iblock",
+              "section",
+              "element"
+            ]
+          },
+          "id": {
+            "type": "integer",
+            "nullable": true
+          },
+          "name": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string",
+            "nullable": true
+          },
+          "url": {
+            "type": "string",
+            "nullable": true,
+            "description": "null, если у инфоблока нет шаблона URL."
+          }
+        },
+        "required": [
+          "type",
+          "name",
+          "url"
+        ],
+        "additionalProperties": true
+      },
+      "Text": {
+        "type": "object",
+        "properties": {
+          "value": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "html"
+            ]
+          }
+        },
+        "additionalProperties": true,
+        "description": "Текст с типом: `html` выводится как HTML, `text` — как обычный текст."
+      },
+      "Breadcrumbs": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/Breadcrumb"
+        },
+        "description": "Главная → инфоблок → разделы → элемент."
+      },
+      "PageMeta": {
+        "type": "object",
+        "properties": {
+          "total": {
+            "type": "integer"
+          },
+          "page": {
+            "type": "integer"
+          },
+          "limit": {
+            "type": "integer"
+          },
+          "pages": {
+            "type": "integer"
+          },
+          "breadcrumbs": {
+            "$ref": "#/components/schemas/Breadcrumbs"
+          }
+        },
+        "additionalProperties": true,
+        "description": "Пагинация и крошки до раздела (или до инфоблока)."
+      },
+      "Element": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "iblock_id": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "date_create": {
+            "type": "string"
+          },
+          "preview_picture": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/File"
+              }
+            ],
+            "nullable": true
+          },
+          "detail_picture": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/File"
+              }
+            ],
+            "nullable": true
+          },
+          "preview_text": {
+            "$ref": "#/components/schemas/Text"
+          },
+          "detail_text": {
+            "$ref": "#/components/schemas/Text"
+          },
+          "seo": {
+            "$ref": "#/components/schemas/Seo"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": true,
+            "description": "Значения запрошенных свойств по коду в нижнем регистре. Список — {name, value}; число; строка; HTML — {value, type}; файл — File; привязка — ID видимого; справочник — UF_XML_ID."
+          },
+          "url": {
+            "type": "string",
+            "nullable": true
+          },
+          "breadcrumbs": {
+            "$ref": "#/components/schemas/Breadcrumbs"
+          }
+        },
+        "additionalProperties": true,
+        "description": "Набор полей зависит от `select`; `id`, `iblock_id`, `seo` и `url` есть всегда."
+      },
+      "Section": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "iblock_id": {
+            "type": "integer"
+          },
+          "iblock_section_id": {
+            "type": "integer",
+            "nullable": true
+          },
+          "name": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "sort": {
+            "type": "integer"
+          },
+          "picture": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/File"
+              }
+            ],
+            "nullable": true
+          },
+          "detail_picture": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/File"
+              }
+            ],
+            "nullable": true
+          },
+          "description": {
+            "$ref": "#/components/schemas/Text"
+          },
+          "seo": {
+            "$ref": "#/components/schemas/Seo"
+          },
+          "url": {
+            "type": "string",
+            "nullable": true
+          },
+          "breadcrumbs": {
+            "$ref": "#/components/schemas/Breadcrumbs"
+          }
+        },
+        "additionalProperties": true,
+        "description": "Набор полей зависит от `select`."
+      },
+      "SectionNode": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "iblock_id": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "sort": {
+            "type": "integer"
+          },
+          "seo": {
+            "$ref": "#/components/schemas/Seo"
+          },
+          "url": {
+            "type": "string",
+            "nullable": true
+          },
+          "children": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SectionNode"
+            }
+          }
+        },
+        "additionalProperties": true
+      },
+      "ElementList": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Element"
+            }
+          },
+          "meta": {
+            "$ref": "#/components/schemas/PageMeta"
+          }
+        },
+        "required": [
+          "items",
+          "meta"
+        ],
+        "additionalProperties": true
+      },
+      "SectionList": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Section"
+            }
+          },
+          "meta": {
+            "$ref": "#/components/schemas/PageMeta"
+          }
+        },
+        "required": [
+          "items",
+          "meta"
+        ],
+        "additionalProperties": true
+      },
+      "SectionTree": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SectionNode"
+            }
+          },
+          "meta": {
+            "type": "object",
+            "properties": {
+              "total": {
+                "type": "integer"
+              },
+              "depth": {
+                "type": "integer"
+              },
+              "truncated": {
+                "type": "boolean",
+                "description": "true — разделов больше 1000, дерево обрезано."
+              },
+              "breadcrumbs": {
+                "$ref": "#/components/schemas/Breadcrumbs"
+              }
+            },
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "items",
+          "meta"
+        ],
+        "additionalProperties": true
+      },
+      "Iblock": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "api_code": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "$ref": "#/components/schemas/Text"
+          },
+          "picture": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/File"
+              }
+            ],
+            "nullable": true
+          },
+          "seo": {
+            "$ref": "#/components/schemas/Seo"
+          },
+          "url": {
+            "type": "string",
+            "nullable": true
+          },
+          "breadcrumbs": {
+            "$ref": "#/components/schemas/Breadcrumbs"
+          }
+        },
+        "additionalProperties": true
+      },
+      "FilterValue": {
+        "type": "object",
+        "properties": {
+          "value": {
+            "description": "XML_ID значения, ID привязки или строка.",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "count": {
+            "type": "integer"
+          },
+          "selected": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": true
+      },
+      "FilterItem": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "list",
+              "number",
+              "string",
+              "element",
+              "section",
+              "directory"
+            ]
+          },
+          "multiple": {
+            "type": "boolean"
+          },
+          "display_type": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "range_slider",
+              "range",
+              "checkbox",
+              "checkbox_pictures",
+              "checkbox_pictures_names",
+              "radio",
+              "select",
+              "select_pictures_names",
+              "calendar"
+            ]
+          },
+          "expanded": {
+            "type": "boolean"
+          },
+          "hint": {
+            "type": "string"
+          },
+          "values": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FilterValue"
+            }
+          },
+          "range": {
+            "type": "object",
+            "properties": {
+              "min": {
+                "type": "number"
+              },
+              "max": {
+                "type": "number"
+              }
+            },
+            "additionalProperties": true,
+            "description": "Для числа: весь диапазон."
+          },
+          "available": {
+            "type": "object",
+            "properties": {
+              "min": {
+                "type": "number"
+              },
+              "max": {
+                "type": "number"
+              }
+            },
+            "additionalProperties": true,
+            "description": "Для числа: диапазон при текущем выборе."
+          },
+          "selected": {
+            "type": "object",
+            "properties": {
+              "min": {
+                "type": "number",
+                "nullable": true
+              },
+              "max": {
+                "type": "number",
+                "nullable": true
+              }
+            },
+            "additionalProperties": true
+          }
+        },
+        "additionalProperties": true,
+        "description": "Свойство формы фильтра. У числа — range/available/selected, у остальных — values."
+      },
+      "FilterForm": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FilterItem"
+            }
+          },
+          "meta": {
+            "type": "object",
+            "properties": {
+              "total": {
+                "type": "integer"
+              },
+              "breadcrumbs": {
+                "$ref": "#/components/schemas/Breadcrumbs"
+              }
+            },
+            "additionalProperties": true,
+            "description": "total — сколько элементов подходит под весь выбор."
+          }
+        },
+        "required": [
+          "items",
+          "meta"
+        ],
+        "additionalProperties": true
+      },
+      "FormControl": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "text, textarea, email, url, password, hidden, date, file, image, radio, dropdown, checkbox, multiselect."
+          },
+          "name": {
+            "type": "string",
+            "description": "Ключ для values в form.add."
+          },
+          "label": {
+            "type": "string"
+          },
+          "default": {
+            "type": "string"
+          },
+          "multiple": {
+            "type": "boolean"
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "value": {
+                  "type": "integer"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "selected": {
+                  "type": "boolean"
+                }
+              },
+              "additionalProperties": true
+            },
+            "description": "Для выбора из вариантов."
+          }
+        },
+        "additionalProperties": true
+      },
+      "FormField": {
+        "type": "object",
+        "properties": {
+          "sid": {
+            "type": "string"
+          },
+          "title": {
+            "$ref": "#/components/schemas/Text"
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "comment": {
+            "type": "string"
+          },
+          "image": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/File"
+              }
+            ],
+            "nullable": true
+          },
+          "controls": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FormControl"
+            }
+          },
+          "validators": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "params": {
+                  "type": "object",
+                  "properties": {},
+                  "additionalProperties": true
+                }
+              },
+              "additionalProperties": true
+            }
+          }
+        },
+        "additionalProperties": true
+      },
+      "Form": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "sid": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "$ref": "#/components/schemas/Text"
+          },
+          "button": {
+            "type": "string"
+          },
+          "use_captcha": {
+            "type": "boolean"
+          },
+          "image": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/File"
+              }
+            ],
+            "nullable": true
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FormField"
+            }
+          }
+        },
+        "additionalProperties": true
+      },
+      "FormAddRequest": {
+        "type": "object",
+        "properties": {
+          "sid": {
+            "type": "string",
+            "description": "SID формы из белого списка."
+          },
+          "values": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": true,
+            "description": "Значения по name из form.get: строка, value варианта, массив value или файл [\"имя.pdf\", \"<base64>\"]."
+          },
+          "captcha_sid": {
+            "type": "string"
+          },
+          "captcha_word": {
+            "type": "string"
+          },
+          "hp": {
+            "type": "string",
+            "description": "Поле-ловушка для ботов: невидимое на фронте. Если заполнено, ответ успешный, но ничего не сохраняется."
+          }
+        },
+        "required": [
+          "sid",
+          "values"
+        ],
+        "additionalProperties": true
+      },
+      "FormAddResult": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "result_id": {
+            "type": "integer",
+            "description": "0 — сработала ловушка hp."
+          },
+          "errors": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "field": {
+                  "type": "string",
+                  "nullable": true,
+                  "description": "SID вопроса, captcha или null."
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": true
+            }
+          }
+        },
+        "required": [
+          "success"
+        ],
+        "additionalProperties": true,
+        "description": "Ошибки заполнения приходят как success=false с кодом 200, а не как HTTP-ошибка."
+      },
+      "Captcha": {
+        "type": "object",
+        "properties": {
+          "sid": {
+            "type": "string"
+          },
+          "src": {
+            "type": "string"
+          },
+          "full_path": {
+            "type": "string"
+          },
+          "width": {
+            "type": "integer"
+          },
+          "height": {
+            "type": "integer"
+          }
+        },
+        "additionalProperties": true
+      },
+      "SearchItem": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "element",
+              "section"
+            ]
+          },
+          "iblock_code": {
+            "type": "string",
+            "nullable": true
+          },
+          "id": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "snippet": {
+            "type": "string",
+            "description": "Фрагмент текста с подсветкой (<b>)."
+          },
+          "date": {
+            "type": "string",
+            "nullable": true
+          },
+          "name_formatted": {
+            "type": "string",
+            "description": "Только у подсказок: название с подсветкой совпадения."
+          }
+        },
+        "additionalProperties": true
+      },
+      "SearchResult": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SearchItem"
+            }
+          },
+          "meta": {
+            "type": "object",
+            "properties": {
+              "total": {
+                "type": "integer"
+              },
+              "page": {
+                "type": "integer"
+              },
+              "limit": {
+                "type": "integer"
+              },
+              "pages": {
+                "type": "integer"
+              },
+              "notice": {
+                "type": "string",
+                "description": "Почему результат пуст (например, запрос без букв)."
+              }
+            },
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": true
+      },
+      "HlItem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "additionalProperties": true,
+        "description": "Поля — из белого списка блока в нижнем регистре: список — {name, value}, «да/нет» — boolean, дата — Y-m-d, файл — File, множественное — массив."
+      },
+      "HlList": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HlItem"
+            }
+          },
+          "meta": {
+            "$ref": "#/components/schemas/PageMeta"
+          }
+        },
+        "required": [
+          "items",
+          "meta"
+        ],
+        "additionalProperties": true
+      },
+      "SitemapIndexItem": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Код инфоблока или static."
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "iblock",
+              "static"
+            ]
+          },
+          "total": {
+            "type": "integer"
+          },
+          "pages": {
+            "type": "integer"
+          },
+          "lastmod": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": true
+      },
+      "SitemapIndex": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SitemapIndexItem"
+            }
+          },
+          "meta": {
+            "type": "object",
+            "properties": {
+              "total": {
+                "type": "integer"
+              },
+              "limit": {
+                "type": "integer"
+              }
+            },
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": true
+      },
+      "SitemapPageItem": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string"
+          },
+          "lastmod": {
+            "type": "string",
+            "nullable": true
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "iblock",
+              "section",
+              "element",
+              "static"
+            ]
+          },
+          "images": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Только при images=Y."
+          }
+        },
+        "required": [
+          "url",
+          "type"
+        ],
+        "additionalProperties": true
+      },
+      "SitemapPage": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SitemapPageItem"
+            }
+          },
+          "meta": {
+            "type": "object",
+            "properties": {
+              "total": {
+                "type": "integer"
+              },
+              "page": {
+                "type": "integer"
+              },
+              "limit": {
+                "type": "integer"
+              },
+              "pages": {
+                "type": "integer"
+              }
+            },
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "Неверные параметры: нет обязательного, инфоблок или поле не разрешены, неверный фильтр.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "Неверный адрес вебхука или у него нет права `custom.rest`.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "Не найдено, неактивно или скрыто.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "TooManyRequests": {
+        "description": "Превышен лимит (отправки формы, капчи).",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "ServerError": {
+        "description": "Внутренняя ошибка: подробности только в журнале Битрикса.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      }
+    }
+  }
+}

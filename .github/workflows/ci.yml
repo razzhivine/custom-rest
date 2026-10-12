@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  checks:
+    name: Проверки без Битрикса
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        php: ["8.1", "8.2", "8.3"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: json, mbstring
+
+      - name: composer.json
+        run: composer validate --strict
+
+      - name: Синтаксис PHP
+        run: |
+          find src bin config tests -name '*.php' -o -name 'custom-rest' -o -name '*.dist' | xargs -n1 php -l
+
+      - name: Описание API (OpenAPI) актуально
+        run: python3 tools/openapi.py --check
+
+      - name: shellcheck
+        run: shellcheck -x -S warning tests/run.sh
