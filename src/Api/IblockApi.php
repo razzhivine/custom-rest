@@ -11,6 +11,7 @@ use Bitrix\Main\ORM\Fields\ExpressionField;
 use Bitrix\Main\Type\Date;
 use Bitrix\Main\Type\DateTime;
 use Bitrix\Iblock\ElementTable;
+use Bitrix\Iblock\Model\Section as SectionModel;
 use Bitrix\Iblock\PropertyTable;
 use Bitrix\Iblock\SectionTable;
 use Throwable;
@@ -139,6 +140,109 @@ class IblockApi extends AbstractApi
     private static function readProperties(string $iblockCode): array
     {
         return array_map('strtoupper', self::iblocks()[$iblockCode]['read_properties'] ?? []);
+    }
+
+    /**
+     * Пользовательские поля разделов (UF_…), которые можно получить: настройка инфоблока
+     * section_fields. Читаются через select[] в section.get и section.list; по ним нельзя
+     * фильтровать и сортировать.
+     */
+    private static function readSectionFields(string $iblockCode): array
+    {
+        return array_map('strtoupper', self::iblocks()[$iblockCode]['section_fields'] ?? []);
+    }
+
+    /**
+     * Отделяет разрешённые UF-поля разделов от select клиента: ORM раздела их не знает.
+     * Остальное проверяет обычная проверка полей (чужое поле — 400, как и раньше).
+     *
+     * @return array{0: array, 1: string[]} [params без UF-полей в select, запрошенные UF-поля]
+     */
+    private static function splitSectionUfSelect(array $params, string $iblockCode): array
+    {
+        $allowed = self::readSectionFields($iblockCode);
+        if (empty($allowed) || !isset($params['select']) || !is_array($params['select'])) {
+            return [$params, []];
+        }
+
+        $uf = [];
+        $rest = [];
+        foreach ($params['select'] as $field) {
+            if (is_string($field) && in_array(strtoupper($field), $allowed, true)) {
+                $uf[] = strtoupper($field);
+            } else {
+                $rest[] = $field;
+            }
+        }
+
+        // Остался один UF — набор полей по умолчанию, как без select.
+        if (empty($rest)) {
+            unset($params['select']);
+        } else {
+            $params['select'] = $rest;
+        }
+
+        return [$params, array_values(array_unique($uf))];
+    }
+
+    /**
+     * Значение UF-поля для ответа: ID привязок и числа — int, даты — ISO 8601, остальное как есть.
+     */
+    private static function normalizeUfValue(mixed $value, string $type): mixed
+    {
+        if (is_array($value)) {
+            return array_values(array_map(static fn ($v) => self::normalizeUfValue($v, $type), $value));
+        }
+        if (in_array($type, ['iblock_element', 'iblock_section', 'hlblock', 'integer'], true)) {
+            return (int) $value;
+        }
+        if ($value instanceof DateTime) {
+            return $value->format('c');
+        }
+        if ($value instanceof Date) {
+            return $value->format('Y-m-d');
+        }
+
+        return $value;
+    }
+
+    /**
+     * Значения UF-полей разделов: [ID раздела => [код поля в нижнем регистре => значение]].
+     * Пустые не приходят; множественное поле — массив. Привязка к элементу отдаёт ID (видимость
+     * элемента проверяется при его запросе через element.get).
+     */
+    private static function loadSectionUfValues(int $iblockId, array $sectionIds, array $fields): array
+    {
+        $sectionIds = array_values(array_filter(array_map('intval', $sectionIds)));
+        if (empty($fields) || empty($sectionIds)) {
+            return [];
+        }
+
+        global $USER_FIELD_MANAGER;
+        $existing = $USER_FIELD_MANAGER->GetUserFields('IBLOCK_' . $iblockId . '_SECTION');
+        $fields = array_values(array_filter($fields, static fn (string $f): bool => isset($existing[$f])));
+        if (empty($fields)) {
+            return [];
+        }
+
+        $class = SectionModel::compileEntityByIblock($iblockId);
+        $rows = $class::getList([
+            'select' => array_merge(['ID'], $fields),
+            'filter' => ['=IBLOCK_ID' => $iblockId, '@ID' => $sectionIds],
+        ]);
+
+        $result = [];
+        while ($row = $rows->fetch()) {
+            foreach ($fields as $field) {
+                $value = $row[$field] ?? null;
+                if ($value === null || $value === '' || $value === []) {
+                    continue;
+                }
+                $result[(int) $row['ID']][strtolower($field)] = self::normalizeUfValue($value, $existing[$field]['USER_TYPE_ID'] ?? '');
+            }
+        }
+
+        return $result;
     }
 
     private static function ensureFields(array $select, array $required): array
@@ -1184,7 +1288,8 @@ class IblockApi extends AbstractApi
     public static function getSection(array $params): array
     {
         return self::cached(__FUNCTION__, $params, static function () use ($params): array {
-            [, $iblockId] = self::resolveIblock($params);
+            [$iblockCode, $iblockId] = self::resolveIblock($params);
+            [$params, $ufFields] = self::splitSectionUfSelect($params, $iblockCode);
 
             $id = self::paramInt($params, 'id');
             $code = self::paramString($params, 'code');
@@ -1223,7 +1328,7 @@ class IblockApi extends AbstractApi
             $item = self::formatSectionData($section, 'detail') + [
                 'url' => self::sectionUrl($iblock, $section, end($chain)['CODE_PATH'] ?? ''),
                 'breadcrumbs' => self::buildBreadcrumbs($iblockId, $chain),
-            ];
+            ] + (self::loadSectionUfValues($iblockId, [$section['ID']], $ufFields)[(int) $section['ID']] ?? []);
 
             return self::removeServiceFields($item, $serviceFields);
         });
@@ -1241,7 +1346,8 @@ class IblockApi extends AbstractApi
     public static function getSections(array $params): array
     {
         return self::cached(__FUNCTION__, $params, static function () use ($params): array {
-            [, $iblockId] = self::resolveIblock($params);
+            [$iblockCode, $iblockId] = self::resolveIblock($params);
+            [$params, $ufFields] = self::splitSectionUfSelect($params, $iblockCode);
             $sectionId = self::resolveSectionParam($params, $iblockId, 'section_id', 'section_code_path');
             [$page, $limit, $offset] = self::preparePagination($params, 50, 200);
 
@@ -1276,12 +1382,14 @@ class IblockApi extends AbstractApi
 
             self::prepareSectionsBatch($iblockId, $sections);
             $iblock = Content::getIblockUrlData($iblockId);
+            $ufValues = self::loadSectionUfValues($iblockId, array_column($sections, 'ID'), $ufFields);
 
             $items = [];
             foreach ($sections as $section) {
                 $codePath = self::appendCodePath($parentCodePath, (string) ($section['CODE'] ?? ''));
                 $item = self::formatSectionData($section, 'preview')
-                    + ['url' => self::sectionUrl($iblock, $section, $codePath)];
+                    + ['url' => self::sectionUrl($iblock, $section, $codePath)]
+                    + ($ufValues[(int) $section['ID']] ?? []);
 
                 $items[] = self::removeServiceFields($item, $serviceFields);
             }
@@ -1308,7 +1416,8 @@ class IblockApi extends AbstractApi
     public static function getSectionTree(array $params): array
     {
         return self::cached(__FUNCTION__, $params, static function () use ($params): array {
-            [, $iblockId] = self::resolveIblock($params);
+            [$iblockCode, $iblockId] = self::resolveIblock($params);
+            [$params, $ufFields] = self::splitSectionUfSelect($params, $iblockCode);
             $sectionId = self::resolveSectionParam($params, $iblockId, 'section_id', 'section_code_path');
 
             $depth = self::paramInt($params, 'depth', self::TREE_DEFAULT_DEPTH);
@@ -1351,6 +1460,7 @@ class IblockApi extends AbstractApi
 
             self::prepareSectionsBatch($iblockId, $sections);
             $iblock = Content::getIblockUrlData($iblockId);
+            $ufValues = self::loadSectionUfValues($iblockId, array_column($sections, 'ID'), $ufFields);
 
             $rootId = $root ? (int) $root['ID'] : 0;
             $codePaths = [$rootId => $root['CODE_PATH'] ?? ''];
@@ -1365,7 +1475,8 @@ class IblockApi extends AbstractApi
 
                 $node = self::removeServiceFields(
                     self::formatSectionData($section, 'preview')
-                        + ['url' => self::sectionUrl($iblock, $section, $codePaths[$id])],
+                        + ['url' => self::sectionUrl($iblock, $section, $codePaths[$id])]
+                        + ($ufValues[$id] ?? []),
                     $serviceFields
                 ) + ['children' => []];
 

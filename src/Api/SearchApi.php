@@ -2,6 +2,8 @@
 
 namespace Custom\Rest\Api;
 
+use Bitrix\Main\Application;
+use Bitrix\Main\Data\Cache;
 use Bitrix\Main\Loader;
 use Bitrix\Main\SystemException;
 use Bitrix\Main\Type\DateTime;
@@ -28,6 +30,12 @@ class SearchApi extends AbstractApi
     private const SUGGEST_DEFAULT_LIMIT = 5;
 
     private const SUGGEST_MAX_LIMIT = 10;
+
+    /** Слова короче не исправляются: у них слишком много «похожих» слов. */
+    private const CORRECT_MIN_LENGTH = 4;
+
+    /** Сколько секунд живёт словарь основ слов индекса. */
+    private const DICTIONARY_TTL = 300;
 
     /**
      * Порядок результатов, как у штатного компонента search.page:
@@ -88,6 +96,176 @@ class SearchApi extends AbstractApi
                 ],
             ];
         });
+    }
+
+    /**
+     * @param array $params ['q' => string]
+     *
+     * Исправление опечаток в запросе: «басейн» → «бассейн». Поиск Битрикса ищет по основам слов и опечаток
+     * не прощает, поэтому каждое слово запроса, которого нет в индексе, заменяется ближайшей основой слова
+     * из индекса (расстояние Дамерау — Левенштейна: 1 ошибка у слов из 4–7 букв, до 2 у более длинных;
+     * при равенстве — основа, которая встречается в большем числе материалов). Слова, которые в индексе
+     * есть, и слова короче CORRECT_MIN_LENGTH не меняются. Исправлять нечего или не нашлось похожих —
+     * corrected = null. Исправленный запрос передают в search как обычный.
+     *
+     * @return array{query: string, corrected: ?string}
+     */
+    public static function correct(array $params): array
+    {
+        return self::run(static function () use ($params): array {
+            if (!Loader::includeModule('search')) {
+                throw new SystemException('Модуль поиска (search) не установлен');
+            }
+
+            $query = trim(self::paramString($params, 'q'));
+            if ($query === '') {
+                self::badRequest("Параметр 'q' обязателен");
+            }
+            if (mb_strlen($query) > self::QUERY_MAX_LENGTH) {
+                self::badRequest('Поисковый запрос длиннее ' . self::QUERY_MAX_LENGTH . ' символов');
+            }
+
+            $dictionary = self::dictionary();
+            $words = preg_split('/[^\p{L}\p{N}]+/u', mb_strtolower($query), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+
+            $changed = false;
+            $result = [];
+            foreach ($words as $word) {
+                $fixed = self::correctWord($word, $dictionary);
+                $changed = $changed || $fixed !== $word;
+                $result[] = $fixed;
+            }
+
+            return ['query' => $query, 'corrected' => $changed ? implode(' ', $result) : null];
+        });
+    }
+
+    /**
+     * Ближайшая к слову основа из словаря; само слово, если оно уже есть в индексе, слишком короткое
+     * или похожего не нашлось.
+     *
+     * @param array<string, int> $dictionary основа (в верхнем регистре) => число материалов
+     */
+    private static function correctWord(string $word, array $dictionary): string
+    {
+        $length = mb_strlen($word);
+        if ($length < self::CORRECT_MIN_LENGTH) {
+            return $word;
+        }
+
+        // Основы самого слова (Битрикс приводит словоформы к основе): если любая из них есть в индексе — слово верное.
+        $stems = function_exists('stemming') ? array_keys((array) stemming($word, 'ru')) : [];
+        $stems = $stems ?: [mb_strtoupper($word)];
+        foreach ($stems as $stem) {
+            if (isset($dictionary[$stem])) {
+                return $word;
+            }
+        }
+
+        $maxDistance = $length >= 8 ? 2 : 1;
+        $best = null;
+        $bestOwnStem = '';
+        $bestDistance = $maxDistance + 1;
+        $bestDocs = 0;
+
+        foreach ($stems as $stem) {
+            $stemLength = mb_strlen($stem);
+            foreach ($dictionary as $candidate => $docs) {
+                $candidate = (string) $candidate;
+                if (abs(mb_strlen($candidate) - $stemLength) > $maxDistance) {
+                    continue;
+                }
+
+                $distance = self::distance($stem, $candidate, $bestDistance);
+                if ($distance < $bestDistance || ($distance === $bestDistance && $docs > $bestDocs)) {
+                    $best = $candidate;
+                    $bestOwnStem = $stem;
+                    $bestDistance = $distance;
+                    $bestDocs = $docs;
+                }
+            }
+        }
+
+        if ($best === null || $bestDistance > $maxDistance) {
+            return $word;
+        }
+
+        // Исправляется основа слова, а окончание остаётся своим: «тренажорный» → «тренажерный», а не «тренажерн».
+        $suffix = '';
+        $upper = mb_strtoupper($word);
+        if ($bestOwnStem !== '' && str_starts_with($upper, $bestOwnStem)) {
+            $suffix = mb_strtolower(mb_substr($upper, mb_strlen($bestOwnStem)));
+        }
+
+        return mb_strtolower($best) . $suffix;
+    }
+
+    /**
+     * Расстояние Дамерау — Левенштейна (вставка, удаление, замена, перестановка соседних букв).
+     * Если оно заведомо больше $limit, возвращается $limit + 1 — дальше считать незачем.
+     */
+    private static function distance(string $a, string $b, int $limit): int
+    {
+        $a = mb_str_split($a);
+        $b = mb_str_split($b);
+        $n = count($a);
+        $m = count($b);
+        if (abs($n - $m) > $limit) {
+            return $limit + 1;
+        }
+
+        $previous2 = [];
+        $previous = range(0, $m);
+        for ($i = 1; $i <= $n; $i++) {
+            $current = [$i];
+            $rowMin = $i;
+            for ($j = 1; $j <= $m; $j++) {
+                $cost = $a[$i - 1] === $b[$j - 1] ? 0 : 1;
+                $value = min($previous[$j] + 1, $current[$j - 1] + 1, $previous[$j - 1] + $cost);
+                if ($i > 1 && $j > 1 && $a[$i - 1] === $b[$j - 2] && $a[$i - 2] === $b[$j - 1]) {
+                    $value = min($value, $previous2[$j - 2] + 1);
+                }
+                $current[$j] = $value;
+                $rowMin = min($rowMin, $value);
+            }
+            if ($rowMin > $limit) {
+                return $limit + 1;
+            }
+            $previous2 = $previous;
+            $previous = $current;
+        }
+
+        return $previous[$m];
+    }
+
+    /**
+     * Словарь индекса поиска: основы слов (как их хранит модуль, в верхнем регистре) и число материалов,
+     * в которых они встречаются. Живёт несколько минут: новые материалы попадают в него вместе с индексом.
+     *
+     * @return array<string, int>
+     */
+    private static function dictionary(): array
+    {
+        $cache = Cache::createInstance();
+        if ($cache->initCache(self::DICTIONARY_TTL, 'custom_rest_search_dictionary', '/custom_rest/search')) {
+            return $cache->getVars();
+        }
+
+        $cache->startDataCache();
+        $rows = Application::getConnection()->query(
+            "SELECT s.STEM AS STEM, COUNT(DISTINCT c.SEARCH_CONTENT_ID) AS DOCS
+             FROM b_search_content_stem c
+             JOIN b_search_stem s ON s.ID = c.STEM
+             WHERE c.LANGUAGE_ID = 'ru'
+             GROUP BY s.STEM"
+        );
+        $dictionary = [];
+        while ($row = $rows->fetch()) {
+            $dictionary[(string) $row['STEM']] = (int) $row['DOCS'];
+        }
+        $cache->endDataCache($dictionary);
+
+        return $dictionary;
     }
 
     /**

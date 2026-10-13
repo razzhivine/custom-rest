@@ -37,6 +37,7 @@ class Registry
         'captcha.get' => [FormApi::class, 'getCaptcha'],
         'search' => [SearchApi::class, 'search'],
         'search.suggest' => [SearchApi::class, 'suggest'],
+        'search.correct' => [SearchApi::class, 'correct'],
         'hl.list' => [HlApi::class, 'getList'],
         'hl.get' => [HlApi::class, 'getItem'],
         'sitemap.index' => [SitemapApi::class, 'getIndex'],

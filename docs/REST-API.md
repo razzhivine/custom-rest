@@ -46,7 +46,7 @@
   [`custom.rest.section.get`](#customrestsectionget) · [`custom.rest.section.list`](#customrestsectionlist) ·
   [`custom.rest.section.tree`](#customrestsectiontree) · [`custom.rest.breadcrumbs.get`](#customrestbreadcrumbsget) ·
   [`custom.rest.filter.get`](#customrestfilterget)
-- Поиск: [`custom.rest.search`](#customrestsearch) · [`custom.rest.search.suggest`](#customrestsearchsuggest)
+- Поиск: [`custom.rest.search`](#customrestsearch) · [`custom.rest.search.suggest`](#customrestsearchsuggest) · [`custom.rest.search.correct`](#customrestsearchcorrect)
 - Веб-формы: [`custom.rest.form.get`](#customrestformget) · [`custom.rest.form.add`](#customrestformadd) ·
   [`custom.rest.captcha.get`](#customrestcaptchaget)
 - Highload-блоки: [`custom.rest.hl.list`](#customresthllist) · [`custom.rest.hl.get`](#customresthlget)
@@ -181,6 +181,12 @@ API отдаёт только то, что видно посетителю са�
 |---|---|
 | Элемент | `ID`, `IBLOCK_ID`, `IBLOCK_SECTION_ID`, `NAME`, `CODE`, `ACTIVE`, `SORT`, `XML_ID`, `TIMESTAMP_X`, `DATE_CREATE`, `ACTIVE_FROM`, `ACTIVE_TO`, `PREVIEW_TEXT`, `PREVIEW_PICTURE`, `DETAIL_TEXT`, `DETAIL_PICTURE` |
 | Раздел | `ID`, `IBLOCK_ID`, `IBLOCK_SECTION_ID`, `NAME`, `CODE`, `ACTIVE`, `SORT`, `XML_ID`, `TIMESTAMP_X`, `PICTURE`, `DETAIL_PICTURE`, `DESCRIPTION` |
+
+**Пользовательские поля разделов (`UF_…`).** Их можно получить в `section.get`, `section.list` и `section.tree`, если поле перечислено в
+настройках инфоблока (`section_fields`, например `'section_fields' => ['UF_SEO_TEXT']`). Значение приходит в ответе под
+ключом в нижнем регистре (`uf_seo_text`), пустые поля не приходят, множественное поле — массив. Привязка к элементу,
+разделу или записи highload-блока отдаёт ID (`int`): видимость элемента проверяется, когда вы запрашиваете его через `element.get`. Поле не
+из `section_fields` — 400, как любое другое поле не из списка. Фильтровать и сортировать по таким полям нельзя.
 
 Поля для ссылок и крошек (`NAME`, `CODE`, `XML_ID`, `IBLOCK_SECTION_ID`) API выбирает само, но в ответ они попадают,
 только если вы их запросили. `seo` и `url` приходят всегда.
@@ -350,6 +356,7 @@ highload-блоков (`!UF_TAGS`). Отрицание без значения �
 | [`custom.rest.filter.get`](#customrestfilterget) | Форма фильтра: значения свойств и счётчики |
 | [`custom.rest.search`](#customrestsearch) | Результаты поиска по сайту |
 | [`custom.rest.search.suggest`](#customrestsearchsuggest) | Подсказки при вводе в строку поиска |
+| [`custom.rest.search.correct`](#customrestsearchcorrect) | Исправление опечаток в поисковом запросе |
 | [`custom.rest.form.get`](#customrestformget) | Веб-форма: поля, варианты ответов, валидаторы |
 | [`custom.rest.form.add`](#customrestformadd) | Отправить веб-форму |
 | [`custom.rest.captcha.get`](#customrestcaptchaget) | Капча для формы с включённой капчей |
@@ -713,6 +720,31 @@ custom.rest.search.suggest.json?q=Нев
 `name_formatted` — название с подсвеченным совпадением (HTML с `<b>`). Выбрал подсказку — переход по `url`; нажал
 Enter — страница результатов с `custom.rest.search`.
 
+### `custom.rest.search.correct`
+
+Исправление опечаток в запросе: «басейн» → «бассейн». Поиск Битрикса ищет по основам слов и опечаток не прощает,
+поэтому каждое слово запроса, которого нет в индексе, заменяется ближайшей основой слова из индекса, а окончание
+остаётся своим («тренажорный» → «тренажерный»).
+
+| Параметр | | Описание |
+|---|---|---|
+| `q` | обязательный | запрос, до 200 символов |
+
+```
+custom.rest.search.correct.json?q=басейн
+```
+
+```json
+{"result": {"query": "басейн", "corrected": "бассейн"}}
+```
+
+Исправлять нечего (все слова есть в индексе) или похожих слов не нашлось — `"corrected": null`. Правила: слова короче
+4 букв не меняются; допускается 1 ошибка у слов из 4–7 букв и до 2 у более длинных (вставка, удаление, замена,
+перестановка соседних букв); из нескольких похожих выбирается основа, которая встречается в большем числе материалов.
+Словарь — основы слов из индекса поиска, кеш на 5 минут; исправляются только слова, которые есть на сайте.
+Исправленный запрос передают в `custom.rest.search` как обычный; показывайте посетителю, что результаты найдены по
+исправленному запросу, и дайте вернуться к исходному.
+
 ## Веб-формы
 
 Формы модуля `form` («Сервисы → Веб-формы» в админке). Получить можно только формы из белого списка `forms`
@@ -783,6 +815,7 @@ custom.rest.form.get.json?sid=TRIAL
 | `sid` | обязательный | символьный идентификатор формы |
 | `values` | | значения по `name` из `custom.rest.form.get` |
 | `captcha_sid`, `captcha_word` | для формы с капчей | `sid` из `custom.rest.captcha.get` и код, введённый пользователем |
+| `service` | | значения **служебных полей** формы по SID (`{"PAGE": "about"}`): «Поля» формы в админке (не вопросы), посетитель их не видит. Принимаются только поля, перечисленные для формы в настройке `form_service_fields`; остальные игнорируются |
 | `hp` | | поле-ловушка для ботов: невидимое поле на фронте; если оно заполнено, ответ `success: true, result_id: 0`, но ничего не сохраняется |
 
 | Поле | Значение |

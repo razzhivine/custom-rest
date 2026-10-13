@@ -901,6 +901,75 @@
         }
       }
     },
+    "/custom.rest.search.correct.json": {
+      "get": {
+        "operationId": "searchCorrect",
+        "tags": [
+          "Поиск"
+        ],
+        "summary": "Исправление опечаток",
+        "description": "Каждое слово запроса, которого нет в индексе, заменяется ближайшей основой слова из индекса (до 1 ошибки у слов из 4–7 букв, до 2 у более длинных). Исправленный запрос передают в `search` как обычный.",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "description": "Поисковый запрос, до 200 символов.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Успех",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "result": {
+                      "type": "object",
+                      "properties": {
+                        "query": {
+                          "type": "string"
+                        },
+                        "corrected": {
+                          "type": "string",
+                          "nullable": true,
+                          "description": "Исправленный запрос; null — исправлять нечего или похожих слов не нашлось."
+                        }
+                      },
+                      "required": [
+                        "query",
+                        "corrected"
+                      ],
+                      "additionalProperties": true
+                    },
+                    "time": {
+                      "$ref": "#/components/schemas/Time"
+                    }
+                  },
+                  "required": [
+                    "result"
+                  ],
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
     "/custom.rest.search.json": {
       "get": {
         "operationId": "search",
@@ -2011,7 +2080,7 @@
           }
         },
         "additionalProperties": true,
-        "description": "Набор полей зависит от `select`."
+        "description": "Набор полей зависит от `select`. Пользовательские поля раздела из `section_fields` настроек инфоблока приходят под своим кодом в нижнем регистре (`uf_seo_text`)."
       },
       "SectionNode": {
         "type": "object",
@@ -2455,6 +2524,12 @@
           },
           "captcha_word": {
             "type": "string"
+          },
+          "service": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": true,
+            "description": "Значения служебных полей формы по SID («Поля» формы в админке): {\"PAGE\": \"about\"}. Принимаются только поля из form_service_fields настроек API, только строки до 255 символов."
           },
           "hp": {
             "type": "string",

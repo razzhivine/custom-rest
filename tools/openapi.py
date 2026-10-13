@@ -171,7 +171,7 @@ SCHEMAS = {
         'id': INT, 'iblock_id': INT, 'iblock_section_id': {'type': 'integer', 'nullable': True}, 'name': STR, 'code': STR, 'sort': INT,
         'picture': nullable_ref('File'), 'detail_picture': nullable_ref('File'), 'description': ref('Text'), 'seo': ref('Seo'), 'url': NULLABLE_STR,
         'breadcrumbs': ref('Breadcrumbs'),
-    }, description='Набор полей зависит от `select`.'),
+    }, description='Набор полей зависит от `select`. Пользовательские поля раздела из `section_fields` настроек инфоблока приходят под своим кодом в нижнем регистре (`uf_seo_text`).'),
     'SectionNode': obj({
         'id': INT, 'iblock_id': INT, 'name': STR, 'code': STR, 'sort': INT, 'seo': ref('Seo'), 'url': NULLABLE_STR,
         'children': arr({'$ref': '#/components/schemas/SectionNode'}),
@@ -220,6 +220,7 @@ SCHEMAS = {
         'sid': {'type': 'string', 'description': 'SID формы из белого списка.'},
         'values': obj(description='Значения по name из form.get: строка, value варианта, массив value или файл ["имя.pdf", "<base64>"].'),
         'captcha_sid': STR, 'captcha_word': STR,
+        'service': obj(description='Значения служебных полей формы по SID («Поля» формы в админке): {"PAGE": "about"}. Принимаются только поля из form_service_fields настроек API, только строки до 255 символов.'),
         'hp': {'type': 'string', 'description': 'Поле-ловушка для ботов: невидимое на фронте. Если заполнено, ответ успешный, но ничего не сохраняется.'},
     }, ['sid', 'values']),
     'FormAddResult': obj({
@@ -340,6 +341,11 @@ add(op('search.suggest', SEARCH, 'Подсказки поиска', 'Совпа�
        [param('q', STR, 'Начало запроса.', True), param('iblock_code[]', arr(STR), 'Ограничить инфоблоками.', False, 'form', True),
         param('limit', {'type': 'integer', 'minimum': 1, 'maximum': 10, 'default': 5}, 'Сколько подсказок.')],
        obj({'items': arr(ref('SearchItem'))}, ['items']), ('400',)))
+add(op('search.correct', SEARCH, 'Исправление опечаток', 'Каждое слово запроса, которого нет в индексе, заменяется ближайшей основой слова из индекса '
+       '(до 1 ошибки у слов из 4–7 букв, до 2 у более длинных). Исправленный запрос передают в `search` как обычный.',
+       [param('q', STR, 'Поисковый запрос, до 200 символов.', True)],
+       obj({'query': STR, 'corrected': {'type': 'string', 'nullable': True, 'description': 'Исправленный запрос; null — исправлять нечего или похожих слов не нашлось.'}},
+           ['query', 'corrected']), ('400',)))
 
 add(op('form.get', FORMS, 'Веб-форма', 'Поля формы, варианты ответов, валидаторы и `name` для отправки; служебные поля и выключенные вопросы не отдаются.',
        [param('sid', STR, 'Символьный идентификатор (SID) формы из белого списка.', True)], ref('Form'), ('400', '404')))

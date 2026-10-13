@@ -38,6 +38,9 @@ class FormApi extends AbstractApi
      * Типы ответов, из которых выбирают: варианты одного вопроса
      * одного такого типа собираются в одно поле с options.
      */
+    /** Максимальная длина значения служебного поля, символов. */
+    private const MAX_SERVICE_VALUE = 255;
+
     private const CHOICE_TYPES = ['radio', 'dropdown', 'checkbox', 'multiselect'];
 
     /**
@@ -102,6 +105,7 @@ class FormApi extends AbstractApi
 
     /**
      * @param array $params ['sid' => string, 'values' => [name => значение],
+     *                      'service' => [SID поля => строка],
      *                      'captcha_sid' => string, 'captcha_word' => string]
      *
      * Отправка формы — как штатным компонентом form.result.new: проверка
@@ -113,6 +117,10 @@ class FormApi extends AbstractApi
      * строка, у выбора одного варианта — value варианта, у выбора нескольких —
      * массив value. Файл — ["имя.pdf", "<содержимое в base64>"]. Ключи,
      * которых нет в форме, игнорируются.
+     *
+     * service — значения служебных полей формы («Поля» в админке, не вопросы: посетитель их
+     * не видит), например страница, с которой отправлена заявка. Принимаются только поля,
+     * перечисленные для формы в настройке form_service_fields; остальные игнорируются.
      *
      * Ошибки заполнения — не исключение, а ответ {success: false, errors:
      * [{field, message}]}: field — SID вопроса, 'captcha' или null (общая
@@ -166,6 +174,8 @@ class FormApi extends AbstractApi
             if ($resultId <= 0) {
                 throw new SystemException('Не удалось сохранить результат формы ' . $form['SID'] . ': ' . strip_tags((string) $strError));
             }
+
+            self::saveServiceFields($form, $resultId, self::paramArray($params, 'service', []));
 
             \CFormCRM::onResultAdded($formId, $resultId);
             \CFormResult::SetEvent($resultId);
@@ -239,6 +249,33 @@ class FormApi extends AbstractApi
             if ($limit > 0 && self::countSince('b_form_result', $formId, $seconds) >= $limit) {
                 self::tooMany('Слишком много отправок формы, повторите позже.');
             }
+        }
+    }
+
+    /**
+     * Служебные поля формы (ADDITIONAL = Y): значения пишутся в результат отдельно от вопросов, пока
+     * письма ещё не отправлены. Только поля из form_service_fields для этой формы, только строки
+     * (до MAX_SERVICE_VALUE символов); поле, которого нет в форме или которое не служебное, пропускается.
+     */
+    private static function saveServiceFields(array $form, int $resultId, array $input): void
+    {
+        $allowed = Config::get('form_service_fields')[(string) $form['SID']] ?? [];
+        if (!is_array($allowed) || empty($allowed) || empty($input)) {
+            return;
+        }
+
+        foreach ($allowed as $fieldSid) {
+            $value = $input[$fieldSid] ?? null;
+            if (!is_string($value) || trim($value) === '') {
+                continue;
+            }
+
+            $field = \CFormField::GetBySID((string) $fieldSid, (int) $form['ID'])->Fetch();
+            if (!$field || ($field['ADDITIONAL'] ?? 'N') !== 'Y') {
+                continue;
+            }
+
+            \CFormResult::SetField($resultId, (string) $fieldSid, mb_substr(trim($value), 0, self::MAX_SERVICE_VALUE));
         }
     }
 
